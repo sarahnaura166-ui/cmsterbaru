@@ -4,7 +4,18 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
-app.use(express.json());
+// Batas body dinaikkan agar konten panjang tidak memicu error 413 (payload too large)
+app.use(express.json({ limit: '2mb' }));
+
+// Fallback: baca file service account bila variabel environment belum tersedia
+// (misalnya saat di-deploy ke Vercel tanpa menambahkan environment variables)
+function getServiceAccountFromFile() {
+  try {
+    return require('../cmsterbaru-firebase-adminsdk-fbsvc-f688567eb0.json');
+  } catch (error) {
+    return null;
+  }
+}
 
 function getDb() {
   if (admin.apps.length) {
@@ -18,24 +29,35 @@ function getDb() {
   ];
   const missingEnv = requiredEnv.filter((name) => !process.env[name]?.trim());
 
-  if (missingEnv.length) {
-    throw new Error(`Konfigurasi Firebase belum lengkap: ${missingEnv.join(', ')}`);
-  }
+  let credential;
 
-  admin.initializeApp({
-    credential: admin.credential.cert({
+  if (missingEnv.length === 0) {
+    credential = admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    }),
-  });
+    });
+  } else {
+    const serviceAccount = getServiceAccountFromFile();
+    if (!serviceAccount) {
+      throw new Error(
+        `Konfigurasi Firebase belum lengkap: ${missingEnv.join(', ')}. ` +
+        'Isi variabel tersebut di .env (lokal) atau di pengaturan environment Vercel, ' +
+        'atau letakkan file service account di root project.'
+      );
+    }
+    console.warn(`Variabel Firebase tidak tersedia (${missingEnv.join(', ')}). Menggunakan file service account.`);
+    credential = admin.credential.cert(serviceAccount);
+  }
+
+  admin.initializeApp({ credential });
 
   return admin.firestore();
 }
 
 function sendApiError(res, message, error) {
   console.error(message, error);
-  res.status(500).json({ error: error.message || message });
+  res.status(500).json({ error: (error && error.message) || message });
 }
 
 function isValidPostBody(body) {
@@ -61,8 +83,11 @@ app.get('/', (req, res) => {
 // Route: Mengambil Daftar Konten dari Firestore (dipakai halaman publish & admin)
 app.get('/api/posts', async (req, res) => {
   try {
-    const snapshot = await getDb().collection('posts').orderBy('createdAt', 'desc').get();
-    const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const snapshot = await getDb().collection('posts').get();
+    // Diurutkan di aplikasi agar postingan tanpa field createdAt tetap ikut dimuat
+    const posts = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     res.status(200).json(posts);
   } catch (error) {
     sendApiError(res, 'Gagal mengambil postingan dari Firestore.', error);

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Area Admin - Node.js CMS</title>
+    <!-- Tailwind CSS untuk styling cepat (sama dengan halaman publish) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fallback minimal: kelas hidden tetap berfungsi walau CDN Tailwind gagal dimuat -->
+    <style>
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans leading-normal tracking-normal">
+
+    <div class="container mx-auto p-6 max-w-5xl">
+        <header class="mb-8 flex items-start justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">Area Admin</h1>
+                <p class="text-gray-600">Tambah, muat, ubah, dan hapus konten yang tampil di halaman publish</p>
+            </div>
+            <a href="/" class="shrink-0 bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition text-sm">
+                Halaman Publish
+            </a>
+        </header>
+
+        <div class="grid gap-6 md:grid-cols-2 items-start">
+            <!-- FORM INPUT: tempat data dimuat saat tombol "Ubah" ditekan -->
+            <section class="bg-white p-6 rounded-lg shadow-md">
+                <h2 id="formHeading" class="text-xl font-bold text-gray-800">Tambah Konten Baru</h2>
+
+                <div id="formNotice" class="hidden mt-4 p-3 rounded-lg text-sm"></div>
+
+                <form id="postForm" class="mt-4 space-y-4" novalidate>
+                    <div>
+                        <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Judul</label>
+                        <input id="title" name="title" type="text" placeholder="Judul konten"
+                            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-800" />
+                    </div>
+
+                    <div>
+                        <label for="content" class="block text-sm font-medium text-gray-700 mb-1">Konten</label>
+                        <textarea id="content" name="content" rows="10" placeholder="Tulis konten di sini..."
+                            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-800"></textarea>
+                    </div>
+
+                    <p id="formError" class="hidden text-sm text-red-600"></p>
+
+                    <div class="flex flex-wrap gap-2">
+                        <button id="submitButton" type="submit"
+                            class="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition text-sm disabled:opacity-60">
+                            Simpan
+                        </button>
+                        <button id="cancelButton" type="button"
+                            class="hidden bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm">
+                            Batal Ubah
+                        </button>
+                        <button id="clearButton" type="button"
+                            class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm">
+                            Bersihkan
+                        </button>
+                    </div>
+
+                    <p id="formHint" class="text-xs text-gray-400">Mode: tambah baru</p>
+                </form>
+            </section>
+
+            <!-- DAFTAR KONTEN: sumber data yang bisa dimuat ke form -->
+            <section>
+                <div class="flex items-center justify-between mb-3 gap-3">
+                    <h2 class="text-xl font-bold text-gray-800">Daftar Konten</h2>
+                    <button id="refreshButton" type="button"
+                        class="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition text-sm">
+                        Muat Ulang
+                    </button>
+                </div>
+                <div id="postsList" class="space-y-4">
+                    <div class="bg-white p-6 rounded-lg shadow-md text-gray-500">Memuat data...</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var form = document.getElementById('postForm');
+            var titleInput = document.getElementById('title');
+            var contentInput = document.getElementById('content');
+            var formError = document.getElementById('formError');
+            var formNotice = document.getElementById('formNotice');
+            var formHeading = document.getElementById('formHeading');
+            var formHint = document.getElementById('formHint');
+            var submitButton = document.getElementById('submitButton');
+            var cancelButton = document.getElementById('cancelButton');
+            var clearButton = document.getElementById('clearButton');
+            var refreshButton = document.getElementById('refreshButton');
+            var postsList = document.getElementById('postsList');
+
+            var posts = [];
+            var editingId = null;
+            var saving = false;
+            var loading = false;
+
+            // Helper untuk mencegah XSS dasar
+            function escapeHtml(text) {
+                var amp = '&' + 'amp;';
+                var lt = '&' + 'lt;';
+                var gt = '&' + 'gt;';
+                var quot = '&' + 'quot;';
+                return String(text == null ? '' : text)
+                    .replace(/&/g, amp)
+                    .replace(/</g, lt)
+                    .replace(/>/g, gt)
+                    .replace(/"/g, quot);
+            }
+
+            function formatDate(value) {
+                var date = new Date(value);
+                return isNaN(date.getTime()) ? '-' : date.toLocaleString();
+            }
+
+            // Wrapper fetch: selalu mengembalikan pesan error yang jelas
+            async function api(url, options) {
+                var response = await fetch(url, options);
+                var data = null;
+                try {
+                    data = await response.json();
+                } catch (parseError) {
+                    data = null;
+                }
+                if (!response.ok) {
+                    var message = (data && data.error) || ('Permintaan gagal (' + response.status + ').');
+                    throw new Error(message);
+                }
+                return data;
+            }
+
+            function showFormError(message) {
+                formError.textContent = message;
+                formError.classList.remove('hidden');
+            }
+
+            function clearFormError() {
+                formError.textContent = '';
+                formError.classList.add('hidden');
+            }
+
+            function showNotice(type, message) {
+                var base = 'mt-4 p-3 rounded-lg text-sm ';
+                if (type === 'success') {
+                    formNotice.className = base + 'bg-green-50 text-green-700 border border-green-200';
+                } else if (type === 'error') {
+                    formNotice.className = base + 'bg-red-50 text-red-700 border border-red-200';
+                } else {
+                    formNotice.className = base + 'bg-gray-50 text-gray-700 border border-gray-200';
+                }
+                formNotice.textContent = message;
+                formNotice.classList.remove('hidden');
+            }
+
+            function hideNotice() {
+                formNotice.textContent = '';
+                formNotice.classList.add('hidden');
+            }
+
+            function renderList() {
+                if (posts.length === 0) {
+                    postsList.innerHTML = '<div class="bg-white p-6 rounded-lg shadow-md text-gray-500">' +
+                        'Belum ada konten. Isi form di samping untuk menambahkan.</div>';
+                    return;
+                }
+
+                postsList.innerHTML = posts.map(function (post) {
+                    var active = post.id === editingId;
+                    return '<article class="bg-white p-5 rounded-lg shadow-md' +
+                        (active ? ' ring-2 ring-gray-800' : '') + '">' +
+                        '<h3 class="text-lg font-bold text-gray-800">' + escapeHtml(post.title) + '</h3>' +
+                        '<p class="text-gray-600 mt-2 whitespace-pre-line text-sm">' + escapeHtml(post.content) + '</p>' +
+                        '<span class="text-xs text-gray-400 mt-3 block">Dibuat: ' + formatDate(post.createdAt) + '</span>' +
+                        '<div class="flex gap-2 mt-3">' +
+                        '<button type="button" data-action="edit" data-id="' + escapeHtml(post.id) + '"' +
+                        ' class="bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 transition text-xs">Ubah</button>' +
+                        '<button type="button" data-action="delete" data-id="' + escapeHtml(post.id) + '"' +
+                        ' class="bg-white border border-gray-300 text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition text-xs">Hapus</button>' +
+                        '</div>' +
+                        '</article>';
+                }).join('');
+            }
+
+            function setListMessage(html) {
+                postsList.innerHTML = html;
+            }
+
+            async function loadPosts(options) {
+                options = options || {};
+                if (loading) {
+                    return;
+                }
+                loading = true;
+
+                if (!options.keepContent) {
+                    setListMessage('<div class="bg-white p-6 rounded-lg shadow-md text-gray-500">Memuat data...</div>');
+                }
+
+                try {
+                    var result = await api('/api/posts');
+                    posts = Array.isArray(result) ? result : [];
+                    renderList();
+                } catch (error) {
+                    posts = [];
+                    setListMessage('<div class="bg-white p-6 rounded-lg shadow-md">' +
+                        '<p class="text-red-600">Gagal memuat data: ' + escapeHtml(error.message) + '</p>' +
+                        '<button type="button" data-action="retry"' +
+                        ' class="mt-3 bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 transition text-xs">Coba Lagi</button>' +
+                        '</div>');
+                } finally {
+                    loading = false;
+                }
+            }
+
+            function resetForm() {
+                editingId = null;
+                titleInput.value = '';
+                contentInput.value = '';
+                formHeading.textContent = 'Tambah Konten Baru';
+                formHint.textContent = 'Mode: tambah baru';
+                cancelButton.classList.add('hidden');
+                clearFormError();
+                renderList();
+            }
+
+            // Memuat satu konten ke dalam form (dipakai saat tombol "Ubah" ditekan)
+            async function loadPostForEdit(id) {
+                var cached = null;
+                var i;
+                for (i = 0; i < posts.length; i++) {
+                    if (posts[i].id === id) {
+                        cached = posts[i];
+                        break;
+                    }
+                }
+
+                var post = null;
+                try {
+                    post = await api('/api/posts/' + encodeURIComponent(id));
+                } catch (error) {
+                    if (cached) {
+                        post = cached;
+                        showNotice('error', 'Detail dari server gagal dimuat (' + error.message +
+                            '), data ditampilkan dari daftar.');
+                    } else {
+                        showNotice('error', 'Gagal memuat data ke form: ' + error.message);
+                        return;
+                    }
+                }
+
+                if (!post) {
+                    showNotice('error', 'Data tidak ditemukan.');
+                    return;
+                }
+
+                editingId = post.id;
+                titleInput.value = post.title == null ? '' : String(post.title);
+                contentInput.value = post.content == null ? '' : String(post.content);
+                formHeading.textContent = 'Ubah Konten';
+                formHint.textContent = 'Mode: ubah (' + post.id + ')';
+                cancelButton.classList.remove('hidden');
+                clearFormError();
+                hideNotice();
+                renderList();
+                titleInput.focus();
+                titleInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+
+            async function deletePost(id) {
+                if (!window.confirm('Hapus konten ini? Tindakan ini tidak bisa dibatalkan.')) {
+                    return;
+                }
+                try {
+                    await api('/api/posts/' + encodeURIComponent(id), { method: 'DELETE' });
+                    if (editingId === id) {
+                        resetForm();
+                    }
+                    showNotice('success', 'Konten berhasil dihapus.');
+                    await loadPosts({ keepContent: true });
+                } catch (error) {
+                    showNotice('error', 'Gagal menghapus: ' + error.message);
+                }
+            }
+
+            // Aksi pada daftar (delegasi event): ubah, hapus, coba lagi
+            postsList.addEventListener('click', function (event) {
+                var target = event.target;
+                if (!target || typeof target.closest !== 'function') {
+                    return;
+                }
+                var button = target.closest('button[data-action]');
+                if (!button) {
+                    return;
+                }
+                var action = button.getAttribute('data-action');
+                var id = button.getAttribute('data-id');
+
+                if (action === 'edit') {
+                    loadPostForEdit(id);
+                } else if (action === 'delete') {
+                    deletePost(id);
+                } else if (action === 'retry') {
+                    loadPosts();
+                }
+            });
+
+            refreshButton.addEventListener('click', function () {
+                loadPosts();
+            });
+
+            clearButton.addEventListener('click', function () {
+                resetForm();
+                hideNotice();
+                titleInput.focus();
+            });
+
+            cancelButton.addEventListener('click', function () {
+                resetForm();
+                hideNotice();
+            });
+
+            form.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                if (saving) {
+                    return;
+                }
+
+                var title = titleInput.value.trim();
+                var content = contentInput.value.trim();
+
+                if (!title || !content) {
+                    showFormError('Judul dan konten wajib diisi.');
+                    return;
+                }
+
+                clearFormError();
+                hideNotice();
+
+                var isEdit = !!editingId;
+                var url = isEdit ? '/api/posts/' + encodeURIComponent(editingId) : '/api/posts';
+
+                saving = true;
+                submitButton.disabled = true;
+                submitButton.textContent = 'Menyimpan...';
+
+                try {
+                    var saved = await api(url, {
+                        method: isEdit ? 'PUT' : 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: title, content: content })
+                    });
+
+                    if (isEdit) {
+                        showNotice('success', 'Konten berhasil diperbarui.');
+                    } else {
+                        showNotice('success', 'Konten berhasil disimpan.');
+                        if (saved && saved.id) {
+                            editingId = saved.id;
+                            formHint.textContent = 'Mode: ubah (' + saved.id + ')';
+                            cancelButton.classList.remove('hidden');
+                            formHeading.textContent = 'Ubah Konten';
+                        }
+                    }
+
+                    await loadPosts({ keepContent: true });
+                } catch (error) {
+                    showNotice('error', 'Gagal menyimpan: ' + error.message);
+                } finally {
+                    saving = false;
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Simpan';
+                }
+            });
+
+            // Muat data daftar saat halaman dibuka
+            loadPosts();
+        })();
+    </script>
+</body>
+</html>

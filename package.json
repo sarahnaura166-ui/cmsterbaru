@@ -1,7 +1,7 @@
 {
-  "name": "node-cms-firestore",
+  "name": "abzah-cms",
   "version": "1.0.0",
-  "description": "CMS Node.js dengan Firestore dan Vercel",
+  "description": "Abzah CMS - CMS Node.js dengan Firestore dan Vercel",
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js",

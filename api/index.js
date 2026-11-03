@@ -80,6 +80,75 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
+// ====== AUTO GENERATED CONTENT ======
+// Generator draf otomatis berbasis template (tanpa layanan eksternal / API key,
+// jadi langsung pakai di lokal maupun Vercel). Hasilnya hanya DRAF yang diisi
+// ke form admin, tetap diperiksa dan disimpan manual lewat tombol Simpan.
+
+function sanitizeTopic(value) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/[<>]/g, '')
+    .trim()
+    .slice(0, 80);
+}
+
+function pickOne(items) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+const DEFAULT_TOPICS = [
+  'menulis produktif',
+  'membaca buku',
+  'nutrisi mindset',
+  'kebiasaan menulis harian',
+  'mengelola konten blog',
+];
+
+function buildGeneratedTitle(topic) {
+  const patterns = [
+    (t) => `${t}: Menulis dan Membaca Itu Nutrisi Mindset`,
+    (t) => `5 Tips ${t} untuk Pemula`,
+    (t) => `Cara Memulai ${t} dengan Konsisten`,
+    (t) => `Mengapa ${t} Penting untuk Mental Bugar`,
+    (t) => `Panduan Singkat ${t} dalam Sehari`,
+  ];
+  return pickOne(patterns)(topic);
+}
+
+function buildGeneratedContent(topic) {
+  const openings = [
+    (t) => `Menulis dan membaca itu nutrisi mindset, dan ${t} adalah salah satu cara paling sederhana untuk memanennya.\n\nArtikel ini masih berupa draf otomatis. Silakan sunting agar terasa seperti suara Anda sendiri.`,
+    (t) => `Banyak orang menunda karena ingin langsung sempurna. Padahal untuk mulai ${t}, langkah kecil yang konsisten jauh lebih penting daripada sempurna.\n\nGanti bagian di bawah ini dengan pengalaman Anda agar tulisan lebih hidup.`,
+    (t) => `Setiap tulisan yang terbit dimulai dari baris pertama yang berani ditulis. Topik ${t} bisa jadi pintu masuknya.\n\nEdit draf ini sesuai gaya dan tujuan Anda sebelum menekan Simpan.`,
+  ];
+n  const points = [
+    (t) => `1. Mulai dari yang kecil: cukup 15-30 menit sehari untuk ${t}.\n2. Catat ide begitu muncul supaya tidak hilang saat butuh.\n3. Baca kembali tulisanmu minggu lalu, lalu perbaiki sedikit demi sedikit.`,
+    (t) => `1. Tetapkan tujuan yang jelas untuk ${t} dalam satu minggu ke depan.\n2. Kurangi gangguan: satu ruangan tenang sudah cukup.\n3. Bagikan hasilnya agar mendapat masukan yang membangun.`,
+    (t) => `1. Pilih satu fokus utama dulu, jangan semuanya sekaligus.\n2. Latih rutin dengan ritme yang nyaman, bukan kewalahan.\n3. Evaluasi tiap akhir pekan, sesuaikan pendekatannya.`,
+  ];
+n  const closings = [
+    `Penutup: ulangi poin-poin di atas dengan kata-katamu sendiri, lalu tambahkan ajakan singkat bagi pembaca untuk mencobanya juga.`,
+    `Penutup: akhiri dengan satu kalimat yang mudah diingat pembaca tentang topik ini.`,
+  ];
+n  return `${pickOne(openings)(topic)}\n\n${pickOne(points)(topic)}\n\n${pickOne(closings)}`;
+}
+
+// Route: Membuat Draf Konten Otomatis (dipakai tombol "Generate Otomatis" di admin)
+app.post('/api/generate', (req, res) => {
+  try {
+    const topic = sanitizeTopic(req.body && req.body.topic) || pickOne(DEFAULT_TOPICS);
+    const generated = {
+      title: buildGeneratedTitle(topic),
+      content: buildGeneratedContent(topic),
+    };
+    res.status(200).json(generated);
+  } catch (error) {
+    sendApiError(res, 'Gagal membuat draf otomatis.', error);
+  }
+});
+
 // Route: Mengambil Daftar Konten dari Firestore (dipakai halaman publish & admin)
 app.get('/api/posts', async (req, res) => {
   try {

@@ -46,18 +46,6 @@
 
                     <p id="formError" class="hidden text-sm text-red-600"></p>
 
-                    <div class="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-                        <div>
-                            <label for="topic" class="block text-sm font-medium text-gray-700 mb-1">Topik draf (opsional)</label>
-                            <input id="topic" name="topic" type="text" placeholder="mis. menulis produktif, motivasi membaca"
-                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-800" />
-                        </div>
-                        <button id="generateButton" type="button"
-                            class="bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600 transition text-sm disabled:opacity-60">
-                            Generate Otomatis
-                        </button>
-                    </div>
-
                     <div class="flex flex-wrap gap-2">
                         <button id="submitButton" type="submit"
                             class="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition text-sm disabled:opacity-60">
@@ -66,6 +54,10 @@
                         <button id="cancelButton" type="button"
                             class="hidden bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm">
                             Batal Ubah
+                        </button>
+                        <button id="autoButton" type="button"
+                            class="bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600 transition text-sm">
+                            Isi Otomatis
                         </button>
                         <button id="clearButton" type="button"
                             class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm">
@@ -108,14 +100,12 @@
             var cancelButton = document.getElementById('cancelButton');
             var clearButton = document.getElementById('clearButton');
             var refreshButton = document.getElementById('refreshButton');
-            var generateButton = document.getElementById('generateButton');
-            var topicInput = document.getElementById('topic');
+            var autoButton = document.getElementById('autoButton');
             var postsList = document.getElementById('postsList');
 
             var posts = [];
             var editingId = null;
             var saving = false;
-            var generating = false;
             var loading = false;
 
             // Helper untuk mencegah XSS dasar
@@ -327,41 +317,65 @@
                 }
             });
 
-            // Isi form dengan draf hasil generator otomatis (endpoint POST /api/generate)
-            if (generateButton) {
-                generateButton.addEventListener('click', async function () {
-                    if (generating) {
-                        return;
-                    }
-                    generating = true;
-                    var previousLabel = generateButton.textContent;
-                    generateButton.disabled = true;
-                    generateButton.textContent = 'Membuat draf...';
-
-                    try {
-                        var generated = await api('/api/generate', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ topic: topicInput.value.trim() })
-                        });
-
-                        titleInput.value = generated.title == null ? '' : String(generated.title);
-                        contentInput.value = generated.content == null ? '' : String(generated.content);
-                        clearFormError();
-                        showNotice('info', 'Draf berhasil dibuat. Periksa, sunting bila perlu, lalu tekan Simpan.');
-                        titleInput.focus();
-                    } catch (error) {
-                        showNotice('error', 'Gagal membuat draf otomatis: ' + error.message);
-                    } finally {
-                        generating = false;
-                        generateButton.disabled = false;
-                        generateButton.textContent = previousLabel;
-                    }
-                });
-            }
-
             refreshButton.addEventListener('click', function () {
                 loadPosts();
+            });
+
+            // =======================================================
+            // AUTO GENERATE CONTENT — 100% di browser, tanpa API.
+            // Menyusun draft judul + konten dari pustaka kata lokal.
+            // =======================================================
+            var SUBJEK = ['menulis', 'membaca', 'menulis jurnal', 'membaca buku', 'kebiasaan menulis', 'kebiasaan membaca'];
+            var MANFAAT = ['ketenangan pikiran', 'klarifikasi ide', 'produktivitas harian', 'kosakata baru', 'fokus yang lebih baik', 'percaya diri'];
+            var DURASI = ['lima menit', 'sepuluh menit', 'satu halaman', 'tiga paragraf'];
+
+            function pilih(arr) {
+                return arr[Math.floor(Math.random() * arr.length)];
+            }
+
+            function kapital(teks) {
+                return teks.charAt(0).toUpperCase() + teks.slice(1);
+            }
+
+            function autoGenerateContent() {
+                var s = pilih(SUBJEK);
+                var m = pilih(MANFAAT);
+                var d = pilih(DURASI);
+
+                var judul = pilih([
+                    'Menulis dan membaca itu nutrisi mindset: memulai ' + s,
+                    kapital(s) + ' untuk pemula: langkah kecil, dampak besar',
+                    '5 cara ' + s + ' agar ' + m,
+                    'Cara konsisten ' + s + ' sehari tanpa merasa terbebani',
+                    'Membangun kebiasaan ' + s + ' untuk ' + m
+                ]);
+
+                var paragraf1 = 'Menulis dan membaca itu nutrisi mindset. Siapa pun bisa memulai ' + s +
+                    ' tanpa peralatan khusus — cukup niat kecil setiap hari. ' + kapital(d) +
+                    ' sehari sudah cukup untuk mulai merasakan perubahannya.';
+
+                var paragraf2 = 'Aturan utamanya: konsistensi mengalahkan intensitas. ' + pilih([
+                    'Tuliskan apa yang dipikirkan, lalu baca ulang untuk menguji apakah idenya masuk akal.',
+                    'Baca sedikit, catat satu kalimat yang menempel, lalu lanjutkan besok.',
+                    'Bagilah topik besar menjadi bagian kecil supaya tidak terasa berat.'
+                ]) + ' ' + pilih([
+                    'Pikiran yang dirawat lewat ' + s + ' tumbuh seperti tanaman yang disirami rutin.',
+                    'Semakin sering dilatih, ' + s + ' akan terasa semakin ringan.',
+                    'Jejak kecil yang ditulis hari ini menjadi bahan berharga di kemudian hari.'
+                ]);
+
+                var paragraf3 = 'Pada akhirnya, ' + s + ' bukan soal hasil instan, melainkan ' + m +
+                    ' yang tumbuh perlahan tapi pasti. Simpan draft ini di Abzah CMS supaya mudah disunting dan diterbitkan kapan saja.';
+
+                return { title: judul, content: paragraf1 + '\n\n' + paragraf2 + '\n\n' + paragraf3 };
+            }
+
+            autoButton.addEventListener('click', function () {
+                var draft = autoGenerateContent();
+                titleInput.value = draft.title;
+                contentInput.value = draft.content;
+                clearFormError();
+                showNotice('info', 'Draft dibuat otomatis di browser (tanpa API) — silakan sunting sebelum disimpan.');
             });
 
             clearButton.addEventListener('click', function () {

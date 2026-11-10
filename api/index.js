@@ -6,12 +6,17 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 
+// Inisialisasi Firebase Admin menggunakan FIREBASE_SERVICE_ACCOUNT (JSON string)
+let serviceAccount;
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} catch (error) {
+  console.error('Gagal melakukan parsing FIREBASE_SERVICE_ACCOUNT. Pastikan format JSON benar.', error);
+  process.exit(1);
+}
+
 admin.initializeApp({
-  credential: admin.credential.cert({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\r?\n/g, '\n'),
-  }),
+  credential: admin.credential.cert(serviceAccount),
 });
 
 const db = admin.firestore();
